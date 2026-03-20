@@ -1,82 +1,70 @@
+import os
+import requests
+from time import sleep
 from telethon import TelegramClient, sync, functions
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import ImportChatInviteRequest
 from telethon.tl.functions.messages import GetMessagesViewsRequest
-import requests
-from time import sleep
+from telethon.sessions import StringSession
 
-API_ID = '25875948'
-API_HASH = 'bbc8cd4753b320c932bd56254d2917a0'
-user_phone = input("ادخل رقم الهاتف : ")
-client = TelegramClient(user_phone, API_ID, API_HASH)
+API_ID = 32030400
+API_HASH = '4c3fae71d5765498f8c691a5b33ddf31'
+SESSION_STRING = os.environ.get("SESSION_STRING")
+BOT_USERNAME = os.environ.get("BOT_USERNAME")
+
+client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+
+async def start_process():
+    await client.connect()
+    if not await client.is_user_authorized():
+        print("- Session Invalid")
+        return
+
+    me = await client.get_me()
+    user_id = me.id
     
-def main():
-    client.connect()
-    if not client.is_user_authorized():
-        print("تم تسجيل الخروج من الحساب")
-        return 0
+    response = requests.get(f"https://bot.keko.dev/api/?login={user_id}&bot_username={BOT_USERNAME}").json()
+    
+    if response.get("ok"):
+        echo_token = response["token"]
+        print(f"- Logged in. Token: {echo_token}")
     else:
-        user_id = client.get_me().id
-        bot_username = ""
-        echo_token = ""
-        while (bot_username == ""):
-            username_bot = input("ادخل معرف البوت: ")
-            if (username_bot):
-                response = requests.request("GET", f"https://bot.keko.dev/api/?login={user_id}&bot_username={username_bot}")
-                response_json = response.json()
-                if (response_json["ok"] == True):
-                    bot_username = username_bot
-                    echo_token = response_json["token"]
-                    print(f"- تم تسجيل الدخول بنجاح, توكن حسابك : {echo_token}")
-                    break
-                else:
-                    print("- "+response_json["msg"])
-        while (True):
-            response = requests.request("GET", f"https://bot.keko.dev/api/?token={echo_token}")
-            response_json = response.json()
-            if (response_json["ok"] == False):
-                print("- "+response_json["msg"])
-                break
-            print("- "+response_json["type"]+" -> "+response_json["return"]+"")
-            if (response_json["type"] == "link"):
-                try:
-                    client(ImportChatInviteRequest(response_json["tg"]))
-                    sleep(2)
-                    entity = client.get_entity(response_json["return"])
-                    messages = client.get_messages(entity, limit=10)
-                    MSG_IDS = [message.id for message in messages]
-                    client(GetMessagesViewsRequest(
-                        peer=response_json["return"],
-                        id=MSG_IDS,
-                        increment=True
-                    ))
-                except:
-                    print("- خطآ : انتظار 100 ثانيه")
-                    sleep(100)
+        print(f"- Login Error: {response.get('msg')}")
+        return
+
+    while True:
+        try:
+            res = requests.get(f"https://bot.keko.dev/api/?token={echo_token}").json()
+            
+            if not res.get("ok"):
+                print(f"- API Error: {res.get('msg')}")
+                sleep(60)
+                continue
+
+            target = res.get("return")
+            print(f"- Processing: {res.get('type')} -> {target}")
+
+            if res.get("type") == "link":
+                await client(ImportChatInviteRequest(res["tg"]))
             else:
-                try:
-                    client(JoinChannelRequest(response_json["return"]))
-                    sleep(2)
-                    entity = client.get_entity(response_json["return"])
-                    messages = client.get_messages(entity, limit=10)
-                    MSG_IDS = [message.id for message in messages]
-                    client(GetMessagesViewsRequest(
-                        peer=response_json["return"],
-                        id=MSG_IDS,
-                        increment=True
-                    ))
-                except:
-                    print("- خطآ : انتظار 100 ثانيه")
-                    sleep(100)
-            response = requests.request("GET", f"https://bot.keko.dev/api/?token={echo_token}&done="+response_json["return"])
-            response_json = response.json()
-            if (response_json["ok"] == False):
-                print("- "+response_json["msg"])
-            else:
-                print("- اصبح عدد نقاطك : ",response_json["c"])
-            print("- انتظار 30 ثانيه")
+                await client(JoinChannelRequest(target))
+            
+            sleep(2)
+            entity = await client.get_entity(target)
+            messages = await client.get_messages(entity, limit=10)
+            msg_ids = [m.id for m in messages]
+            
+            await client(GetMessagesViewsRequest(peer=target, id=msg_ids, increment=True))
+            
+            done_res = requests.get(f"https://bot.keko.dev/api/?token={echo_token}&done={target}").json()
+            if done_res.get("ok"):
+                print(f"- Points: {done_res.get('c')}")
+            
             sleep(30)
-        client.disconnect()
+            
+        except Exception as e:
+            print(f"- Error: {e}")
+            sleep(100)
 
 with client:
-    client.loop.run_until_complete(main())
+    client.loop.run_until_complete(start_process())
