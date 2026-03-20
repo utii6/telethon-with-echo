@@ -58,11 +58,13 @@ except ImportError:
         except Exception as e:
             print("Failed to install requests with pip and pip:", str(e))
             exit(0)
+import os
 import json
-API_ID = '8'
-API_HASH = '7245de8e747a0d6fbe11f7cc14fcc0bb'
-bot_token = ""
-running_processes = {}
+
+API_ID = os.environ.get("API_ID", "8") # سيأخذ القيمة من Koyeb أو يستخدم 8 كافتراضي
+API_HASH = os.environ.get("API_HASH", "7245de8e747a0d6fbe11f7cc14fcc0bb")
+bot_token = os.environ.get("BOT_TOKEN", "") 
+
 try:
     with open("echo_data.json", "r") as json_file:
         info = json.load(json_file)
